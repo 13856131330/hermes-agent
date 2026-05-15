@@ -71,7 +71,6 @@ CONFIGURABLE_TOOLSETS = [
     ("delegation",      "👥 Task Delegation",           "delegate_task"),
     ("cronjob",         "⏰ Cron Jobs",                 "create/list/update/pause/resume/run, with optional attached skills"),
     ("messaging",       "📨 Cross-Platform Messaging",  "send_message"),
-    ("rl",              "🧪 RL Training",               "Tinker-Atropos training tools"),
     ("homeassistant",    "🏠 Home Assistant",           "smart home device control"),
     ("spotify",          "🎵 Spotify",                  "playback, search, playlists, library"),
     ("discord",         "💬 Discord (read/participate)", "fetch messages, search members, create thread"),
@@ -87,7 +86,7 @@ CONFIGURABLE_TOOLSETS = [
 # Video gen is off by default — it's a niche, paid, slow feature. Users
 # who want it opt in via `hermes tools` → Video Generation, which walks
 # them through provider + model selection.
-_DEFAULT_OFF_TOOLSETS = {"moa", "homeassistant", "rl", "spotify", "discord", "discord_admin", "video", "video_gen"}
+_DEFAULT_OFF_TOOLSETS = {"moa", "homeassistant", "spotify", "discord", "discord_admin", "video", "video_gen"}
 
 # Platform-scoped toolsets: only appear in the `hermes tools` checklist for
 # these platforms, and only resolve/save for these platforms.  A toolset
@@ -245,6 +244,15 @@ TOOL_CATEGORIES = {
         "setup_title": "Select Search Provider",
         "setup_note": "A free DuckDuckGo search skill is also included — skip this if you don't need a premium provider.",
         "icon": "🔍",
+        # Per-provider rows are injected at runtime from
+        # plugins.web.<vendor>.provider via _plugin_web_search_providers()
+        # in _visible_providers(). Only non-provider UX setup-flow rows
+        # for the firecrawl backend are listed here:
+        #   - "Nous Subscription" — managed Firecrawl billed via Nous
+        #     subscription (requires_nous_auth + override_env_vars).
+        #   - "Firecrawl Self-Hosted" — points firecrawl at a private
+        #     Docker instance via FIRECRAWL_API_URL only.
+        # See PR #25182 for the migration rationale.
         "providers": [
             {
                 "name": "Nous Subscription",
@@ -257,42 +265,6 @@ TOOL_CATEGORIES = {
                 "override_env_vars": ["FIRECRAWL_API_KEY", "FIRECRAWL_API_URL"],
             },
             {
-                "name": "Firecrawl Cloud",
-                "badge": "★ recommended",
-                "tag": "Full-featured search, extract, and crawl",
-                "web_backend": "firecrawl",
-                "env_vars": [
-                    {"key": "FIRECRAWL_API_KEY", "prompt": "Firecrawl API key", "url": "https://firecrawl.dev"},
-                ],
-            },
-            {
-                "name": "Exa",
-                "badge": "paid",
-                "tag": "Neural search with semantic understanding",
-                "web_backend": "exa",
-                "env_vars": [
-                    {"key": "EXA_API_KEY", "prompt": "Exa API key", "url": "https://exa.ai"},
-                ],
-            },
-            {
-                "name": "Parallel",
-                "badge": "paid",
-                "tag": "AI-powered search and extract",
-                "web_backend": "parallel",
-                "env_vars": [
-                    {"key": "PARALLEL_API_KEY", "prompt": "Parallel API key", "url": "https://parallel.ai"},
-                ],
-            },
-            {
-                "name": "Tavily",
-                "badge": "free tier",
-                "tag": "Search, extract, and crawl — 1000 free searches/mo",
-                "web_backend": "tavily",
-                "env_vars": [
-                    {"key": "TAVILY_API_KEY", "prompt": "Tavily API key", "url": "https://app.tavily.com/home"},
-                ],
-            },
-            {
                 "name": "Firecrawl Self-Hosted",
                 "badge": "free · self-hosted",
                 "tag": "Run your own Firecrawl instance (Docker)",
@@ -300,32 +272,6 @@ TOOL_CATEGORIES = {
                 "env_vars": [
                     {"key": "FIRECRAWL_API_URL", "prompt": "Your Firecrawl instance URL (e.g., http://localhost:3002)"},
                 ],
-            },
-            {
-                "name": "SearXNG",
-                "badge": "free · self-hosted · search only",
-                "tag": "Privacy-respecting metasearch engine — search only (pair with any extract provider)",
-                "web_backend": "searxng",
-                "env_vars": [
-                    {"key": "SEARXNG_URL", "prompt": "Your SearXNG instance URL (e.g., http://localhost:8080)", "url": "https://searxng.github.io/searxng/"},
-                ],
-            },
-            {
-                "name": "Brave Search (Free Tier)",
-                "badge": "free tier · search only",
-                "tag": "2,000 queries/mo free — search only (pair with any extract provider)",
-                "web_backend": "brave-free",
-                "env_vars": [
-                    {"key": "BRAVE_SEARCH_API_KEY", "prompt": "Brave Search subscription token", "url": "https://brave.com/search/api/"},
-                ],
-            },
-            {
-                "name": "DuckDuckGo (ddgs)",
-                "badge": "free · no key · search only",
-                "tag": "Search via the ddgs Python package — no API key (pair with any extract provider)",
-                "web_backend": "ddgs",
-                "env_vars": [],
-                "post_setup": "ddgs",
             },
         ],
     },
@@ -474,22 +420,6 @@ TOOL_CATEGORIES = {
                     # optional pin for reproducibility across macOS updates.
                 ],
                 "post_setup": "cua_driver",
-            },
-        ],
-    },
-    "rl": {
-        "name": "RL Training",
-        "icon": "🧪",
-        "requires_python": (3, 11),
-        "providers": [
-            {
-                "name": "Tinker / Atropos",
-                "tag": "RL training platform",
-                "env_vars": [
-                    {"key": "TINKER_API_KEY", "prompt": "Tinker API key", "url": "https://tinker-console.thinkingmachines.ai/keys"},
-                    {"key": "WANDB_API_KEY", "prompt": "WandB API key", "url": "https://wandb.ai/authorize"},
-                ],
-                "post_setup": "rl_training",
             },
         ],
     },
@@ -964,24 +894,6 @@ def _run_post_setup(post_setup_key: str):
         except Exception as exc:
             _print_warning(f"    Spotify login failed: {exc}")
             _print_info("    Run manually: hermes auth spotify")
-
-    elif post_setup_key == "rl_training":
-        try:
-            __import__("tinker_atropos")
-        except ImportError:
-            tinker_dir = PROJECT_ROOT / "tinker-atropos"
-            if tinker_dir.exists() and (tinker_dir / "pyproject.toml").exists():
-                _print_info("    Installing tinker-atropos submodule...")
-                result = _pip_install(["-e", str(tinker_dir)])
-                if result.returncode == 0:
-                    _print_success("    tinker-atropos installed")
-                else:
-                    _print_warning("    tinker-atropos install failed - run manually:")
-                    _print_info('      uv pip install -e "./tinker-atropos"')
-            else:
-                _print_warning("    tinker-atropos submodule not found - run:")
-                _print_info("      git submodule update --init --recursive")
-                _print_info('      uv pip install -e "./tinker-atropos"')
 
     elif post_setup_key == "langfuse":
         # Install the langfuse SDK.
@@ -1576,6 +1488,64 @@ def _plugin_video_gen_providers() -> list[dict]:
     return rows
 
 
+# Mirror of _plugin_image_gen_providers for web search backends. Surfaces
+# every plugin-registered web provider so it appears in the
+# "Web Search & Extract" picker. All seven providers (brave-free, ddgs,
+# searxng, exa, parallel, tavily, firecrawl) live as plugins after
+# PR #25182 — this helper is the sole source of truth for the category's
+# provider rows. The hardcoded entries that used to drive the category
+# were deleted in the same PR; only the two non-provider UX rows
+# ("Nous Subscription" managed-gateway entry, "Firecrawl Self-Hosted")
+# remain in TOOL_CATEGORIES because they describe alternative *setup
+# flows* for the firecrawl backend rather than distinct providers.
+def _plugin_web_search_providers() -> list[dict]:
+    """Build picker-row dicts from plugin-registered web search providers.
+
+    Each returned dict is a regular ``TOOL_CATEGORIES`` provider row. It
+    populates both ``web_backend`` (legacy field consumed by setup +
+    selection helpers) and ``web_search_plugin_name`` (informational
+    marker) so the picker behaves identically whether a provider is
+    hardcoded or plugin-registered.
+
+    After PR #25182, all seven web providers (brave-free, ddgs, searxng,
+    exa, parallel, tavily, firecrawl) are plugins; this helper is the sole
+    source of provider rows for the Web Search & Extract category.
+    """
+    try:
+        from agent.web_search_registry import list_providers as _list_web_providers
+        from hermes_cli.plugins import _ensure_plugins_discovered
+
+        _ensure_plugins_discovered()
+        providers = _list_web_providers()
+    except Exception:
+        return []
+
+    rows: list[dict] = []
+    for provider in providers:
+        name = getattr(provider, "name", None)
+        if not name:
+            continue
+        try:
+            schema = provider.get_setup_schema()
+        except Exception:
+            continue
+        if not isinstance(schema, dict):
+            continue
+        row = {
+            "name": schema.get("name", provider.display_name),
+            "badge": schema.get("badge", ""),
+            "tag": schema.get("tag", ""),
+            "env_vars": schema.get("env_vars", []),
+            "web_backend": name,
+            "web_search_plugin_name": name,
+        }
+        # Optional pass-through fields the schema can opt into.
+        if schema.get("post_setup"):
+            row["post_setup"] = schema["post_setup"]
+        rows.append(row)
+    return rows
+
+
 def _visible_providers(cat: dict, config: dict) -> list[dict]:
     """Return provider entries visible for the current auth/config state."""
     features = get_nous_subscription_features(config)
@@ -1596,6 +1566,14 @@ def _visible_providers(cat: dict, config: dict) -> list[dict]:
     # video_gen has NO hardcoded providers — every backend is a plugin.
     if cat.get("name") == "Video Generation":
         visible.extend(_plugin_video_gen_providers())
+
+    # Inject plugin-registered web search backends. After PR #25182, this
+    # is the SOLE source of provider rows for the Web Search & Extract
+    # category — the per-provider hardcoded entries were deleted. The two
+    # remaining hardcoded rows ("Nous Subscription", "Firecrawl
+    # Self-Hosted") are non-provider UX setup-flow rows for firecrawl.
+    if cat.get("name") == "Web Search & Extract":
+        visible.extend(_plugin_web_search_providers())
 
     return visible
 
